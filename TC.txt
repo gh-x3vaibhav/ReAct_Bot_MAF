@@ -1,0 +1,133 @@
+
+==========================================================================================
+  INPUT: User should be able to create new account in Spotify website.
+==========================================================================================
+
+  KNOWLEDGE GRAPH SUMMARY
+------------------------------------------------------------------------------------------
+    Nodes : 8  |  Edges : 10
+    Node types    : Page(2), Field(3), Action(1), Validation(1), UserRole(1)
+    Relation types: NAVIGATES_TO(1), HAS_FIELD(3), HAS_ACTION(1), TRIGGERS(1), VALIDATES(3), ROLE_ACCESSES(1)
+
+
+  Test Case 1: Successful account creation with valid data (Positive)
+    [KG Nodes: spotify_website, account_creation_page, username_field, email_field, password_field, create_account_button, account_creation_validation, new_user]
+    [KG Relations: NAVIGATES_TO, HAS_FIELD, HAS_ACTION, TRIGGERS, VALIDATES, ROLE_ACCESSES]
+------------------------------------------------------------------------------------------
+    Step 1: Navigate to Spotify website and open account creation page
+             (Example: https://www.spotify.com/)
+    Step 2: Enter valid username
+             (Example: username123)
+    Step 3: Enter valid email
+             (Example: user@example.com)
+    Step 4: Enter valid password
+             (Example: ValidPass123)
+    Step 5: Click Create Account button and verify account creation success
+             (Example: Account created successfully)
+
+
+  Test Case 2: Account creation fails with empty username (Negative)
+    [KG Nodes: account_creation_page, username_field, create_account_button, account_creation_validation]
+    [KG Relations: HAS_FIELD, HAS_ACTION, TRIGGERS, VALIDATES]
+------------------------------------------------------------------------------------------
+    Step 1: Open account creation page
+             (Example: Spotify account creation page)
+    Step 2: Leave username field empty
+    Step 3: Enter valid email and password
+             (Example: user@example.com, ValidPass123)
+    Step 4: Click Create Account button and verify error message
+             (Example: Username is required)
+
+
+  Test Case 3: Account creation fails with invalid email format (Negative)
+    [KG Nodes: account_creation_page, email_field, create_account_button, account_creation_validation]
+    [KG Relations: HAS_FIELD, HAS_ACTION, TRIGGERS, VALIDATES]
+------------------------------------------------------------------------------------------
+    Step 1: Open account creation page
+             (Example: Spotify account creation page)
+    Step 2: Enter valid username
+             (Example: username123)
+    Step 3: Enter invalid email format
+             (Example: useratexample.com)
+    Step 4: Enter valid password
+             (Example: ValidPass123)
+    Step 5: Click Create Account button and verify error message
+             (Example: Invalid email format)
+
+
+  Test Case 4: Account creation fails with short password (Negative)
+    [KG Nodes: account_creation_page, password_field, create_account_button, account_creation_validation]
+    [KG Relations: HAS_FIELD, HAS_ACTION, TRIGGERS, VALIDATES]
+------------------------------------------------------------------------------------------
+    Step 1: Open account creation page
+             (Example: Spotify account creation page)
+    Step 2: Enter valid username and email
+             (Example: username123, user@example.com)
+    Step 3: Enter short password (less than 8 characters)
+             (Example: short1)
+    Step 4: Click Create Account button and verify error message
+             (Example: Password must be at least 8 characters long)
+
+
+  Test Case 5: Account creation fails when username already exists (Negative)
+    [KG Nodes: account_creation_page, username_field, create_account_button, account_creation_validation]
+    [KG Relations: HAS_FIELD, HAS_ACTION, TRIGGERS, VALIDATES]
+------------------------------------------------------------------------------------------
+    Step 1: Open account creation page
+             (Example: Spotify account creation page)
+    Step 2: Enter username that already exists
+             (Example: existinguser)
+    Step 3: Enter valid email and password
+             (Example: user@example.com, ValidPass123)
+    Step 4: Click Create Account button and verify error message
+             (Example: Username already exists)
+
+
+  Test Case 6: Verify navigation from Spotify website to account creation page (Navigation)
+    [KG Nodes: spotify_website, account_creation_page]
+    [KG Relations: NAVIGATES_TO]
+------------------------------------------------------------------------------------------
+    Step 1: Go to Spotify website homepage
+             (Example: https://www.spotify.com/)
+    Step 2: Click on Sign Up or Create Account link
+             (Example: Navigates to account creation page)
+    Step 3: Verify account creation page is displayed
+             (Example: Account creation form visible)
+
+
+  Test Case 7: Test input field boundaries for username (Edge)
+    [KG Nodes: username_field]
+------------------------------------------------------------------------------------------
+    Step 1: Enter minimum length username
+             (Example: us)
+    Step 2: Enter maximum length username
+             (Example: usernamewithmaximumlengthallowed)
+    Step 3: Enter username with special characters
+             (Example: user!@#)
+
+
+  Test Case 8: Test password field for injection attacks (Security)
+    [KG Nodes: password_field, create_account_button]
+    [KG Relations: HAS_FIELD, HAS_ACTION]
+------------------------------------------------------------------------------------------
+    Step 1: Enter common injection attack strings in password field
+             (Example: ' OR '1'='1)
+    Step 2: Click Create Account button and verify input is sanitized
+             (Example: Account creation should fail gracefully without code execution)
+
+
+  Test Case 9: Test for XSS vulnerability in username field (Security)
+    [KG Nodes: username_field, create_account_button]
+    [KG Relations: HAS_FIELD, HAS_ACTION]
+------------------------------------------------------------------------------------------
+    Step 1: Enter script tags in username field
+             (Example: <script>alert('XSS')</script>)
+    Step 2: Click Create Account button and verify input is sanitized
+             (Example: No script execution, error message shown)
+
+------------------------------------------------------------------------------------------
+  KG NODE COVERAGE    : 8/8
+  KG RELATION COVERAGE: 6/6
+==========================================================================================
+  Total Test Cases: 9
+==========================================================================================
