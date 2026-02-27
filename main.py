@@ -102,10 +102,100 @@ def _get_env_value(primary: str, *aliases: str, default: str | None = None) -> s
     return default
 
 
+def _flush_log_handlers() -> None:
+    """Force all file handlers to flush to disk."""
+    for h in logging.getLogger().handlers:
+        try:
+            h.flush()
+        except Exception:
+            pass
+
+
 def log_block(title: str, content: str) -> None:
     msg = f"\n[{title}]\n{content}\n"
     logging.info(msg)
+    _flush_log_handlers()
     print(msg)
+
+
+def _build_tc_report(header: str) -> str:
+    """Build the test-case report string from tools_module.LAST_TEST_CASES."""
+    sep = "=" * 90
+    thin = "-" * 90
+    lines: list[str] = []
+    lines.append("")
+    lines.append(sep)
+    lines.append(f"  INPUT: {header}")
+    lines.append(sep)
+
+    # ---- Knowledge Graph summary section ----
+    kg = tools_module.KNOWLEDGE_GRAPH
+    if kg.nodes:
+        kg_sum = kg.summary()
+        lines.append("")
+        lines.append("  KNOWLEDGE GRAPH SUMMARY")
+        lines.append(thin)
+        lines.append(f"    Nodes : {kg_sum['total_nodes']}  |  Edges : {kg_sum['total_edges']}")
+        lines.append(f"    Node types    : {', '.join(f'{k}({v})' for k, v in kg_sum['node_types'].items())}")
+        lines.append(f"    Relation types: {', '.join(f'{k}({v})' for k, v in kg_sum['relation_types'].items())}")
+        lines.append("")
+
+    for idx, tc in enumerate(tools_module.LAST_TEST_CASES, start=1):
+        title = tc.get("title", "Untitled") if isinstance(tc, dict) else str(tc)
+        tc_type = tc.get("type", "General") if isinstance(tc, dict) else ""
+        steps = tc.get("steps", []) if isinstance(tc, dict) else []
+        kg_nodes = tc.get("kg_nodes", []) if isinstance(tc, dict) else []
+        kg_relations = tc.get("kg_relations", []) if isinstance(tc, dict) else []
+
+        lines.append("")
+        lines.append(f"  Test Case {idx}: {title} ({tc_type})")
+        if kg_nodes:
+            lines.append(f"    [KG Nodes: {', '.join(kg_nodes)}]")
+        if kg_relations:
+            lines.append(f"    [KG Relations: {', '.join(kg_relations)}]")
+        lines.append(thin)
+
+        for si, step_obj in enumerate(steps, start=1):
+            if isinstance(step_obj, dict):
+                step_text = step_obj.get("step", "")
+                example = step_obj.get("example", "")
+            else:
+                step_text = str(step_obj)
+                example = ""
+
+            lines.append(f"    Step {si}: {step_text}")
+            if example:
+                lines.append(f"             (Example: {example})")
+
+        lines.append("")
+
+    # ---- Coverage summary ----
+    if kg.nodes:
+        covered_nodes: set = set()
+        covered_rels: set = set()
+        for tc in tools_module.LAST_TEST_CASES:
+            if isinstance(tc, dict):
+                covered_nodes.update(tc.get("kg_nodes", []))
+                covered_rels.update(tc.get("kg_relations", []))
+        all_nodes = set(kg.nodes.keys())
+        all_rels = {e["relation"] for e in kg.edges}
+        lines.append(thin)
+        lines.append(f"  KG NODE COVERAGE    : {len(covered_nodes & all_nodes)}/{len(all_nodes)}")
+        lines.append(f"  KG RELATION COVERAGE: {len(covered_rels & all_rels)}/{len(all_rels)}")
+
+    lines.append(sep)
+    lines.append(f"  Total Test Cases: {len(tools_module.LAST_TEST_CASES)}")
+    lines.append(sep)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _save_tc_file(report_text: str) -> None:
+    """Write the test-case report to TC.txt alongside main.py."""
+    tc_path = Path(__file__).resolve().parent / "TC.txt"
+    tc_path.write_text(report_text, encoding="utf-8")
+    print(f"\n[INFO] Test cases saved to {tc_path}")
+    logging.info(f"Test cases saved to {tc_path}")
 
 
 def create_agent():
@@ -149,11 +239,49 @@ def create_agent():
     )
 
     instructions = (
-        "You are an intelligent QA assistant.\n"
-        "Decide which tools are necessary based on the user requirement.\n"
-        "Do not call tools unnecessarily.\n"
-        "If needed, call tools to structure requirement, generate test cases, then format report.\n"
-        "Always ensure test cases are produced.\n"
+        "You are an expert QA Test Engineer assistant that uses Knowledge Graphs for traceability.\n"
+        "When the user provides a requirement or scenario, you MUST:\n"
+        "\n"
+        "1. Call knowledge_graph_builder to build a Knowledge Graph from the requirement.\n"
+        "   Extract ALL entities as nodes with types:\n"
+        "   - Feature, Page, Field, Action, Validation, UserRole, Data, SecurityControl\n"
+        "   Map ALL relationships as edges with relations:\n"
+        "   - HAS_FIELD, HAS_ACTION, VALIDATES, NAVIGATES_TO, DEPENDS_ON, REQUIRES,\n"
+        "     TRIGGERS, PRODUCES, PROTECTED_BY, ROLE_ACCESSES\n"
+        "   Be thorough: every UI element, validation rule, user role, security concern,\n"
+        "   and navigation path should appear as a node with edges connecting them.\n"
+        "   IMPORTANT: In node properties, use ONLY plain strings, numbers, and booleans.\n"
+        "   Do NOT include regex patterns or special backslash sequences in properties.\n"
+        "   Example good property: {\"validates\": \"email format\", \"required\": true}\n"
+        "   Example BAD property:  {\"regex\": \"^[\\\\w]+@\"} — NEVER do this.\n"
+        "\n"
+        "2. Call knowledge_graph_test_generator with a comprehensive JSON array of test cases.\n"
+        "   Use the Knowledge Graph to drive test generation — traverse every node and edge\n"
+        "   to ensure full coverage:\n"
+        "   - For each Field node: positive, negative, and edge-case tests\n"
+        "   - For each Action node: valid triggers and error paths\n"
+        "   - For each Validation node: pass and fail scenarios\n"
+        "   - For each SecurityControl node: injection, XSS, brute force tests\n"
+        "   - For each NAVIGATES_TO edge: navigation flow tests\n"
+        "   - For each DEPENDS_ON edge: dependency-breaking tests\n"
+        "   Generate 10-15+ test cases covering ALL categories:\n"
+        "   Positive, Negative, Edge, UI, Navigation, Compatibility, Security\n"
+        "\n"
+        "   Each test case MUST have:\n"
+        '   - "title": descriptive name\n'
+        '   - "type": one of Positive|Negative|Edge|UI|Navigation|Compatibility|Security\n'
+        '   - "kg_nodes": array of node ids from the knowledge graph this test covers\n'
+        '   - "kg_relations": array of relation names exercised by this test\n'
+        '   - "steps": array of objects with "step" (action description) and "example" (concrete example value)\n'
+        "\n"
+        "   Use realistic example data (emails, passwords, URLs) relevant to the scenario.\n"
+        "   Each test case should have 2-5 steps.\n"
+        "   Aim for 100%% node and relation coverage across all test cases.\n"
+        "\n"
+        "3. Call report_formatter with the input scenario as header to produce the final CLI report.\n"
+        "\n"
+        "Always call all three tools in sequence. Do NOT skip any tool.\n"
+        "Do NOT return test cases as plain text — always pass them through the tools.\n"
     )
 
     return ChatAgent(
@@ -161,8 +289,8 @@ def create_agent():
         name="IntelligentQABot",
         instructions=instructions,
         tools=[
-            tools_module.requirement_structure_tool,
-            tools_module.generic_test_generator,
+            tools_module.knowledge_graph_builder,
+            tools_module.knowledge_graph_test_generator,
             tools_module.report_formatter,
         ],
     )
@@ -177,6 +305,8 @@ def run_bot():
 
         tools_module.TOOL_OBSERVATIONS.clear()
         tools_module.LAST_TEST_CASES.clear()
+        tools_module.FINAL_REPORT = ""
+        tools_module.KNOWLEDGE_GRAPH.clear()
 
         log_block("INPUT SCENARIO", user_input)
         log_block(
@@ -192,29 +322,33 @@ def run_bot():
         for obs in tools_module.TOOL_OBSERVATIONS:
             log_block("OBSERVATION", str(obs))
 
-        if tools_module.LAST_TEST_CASES:
-            print("\nFINAL TEST CASES\n")
-            for i, tc in enumerate(tools_module.LAST_TEST_CASES, start=1):
-                print(f"TC_{i:03d}: {tc}")
-            print("")
-
-            logging.info(
-                "\n[FINAL TEST CASES]\n" +
-                "\n".join(
-                    [f"TC_{i:03d}: {tc}" for i, tc in enumerate(tools_module.LAST_TEST_CASES, start=1)]
-                ) +
-                "\n"
-            )
+        # ---- Display the formatted report in CLI & save to TC.txt + logs.txt ----
+        if tools_module.FINAL_REPORT:
+            report_text = tools_module.FINAL_REPORT
+        elif tools_module.LAST_TEST_CASES:
+            report_text = _build_tc_report(user_input)
         else:
-            print("\nNo test cases were generated.\n")
-            logging.info("\n[FINAL TEST CASES]\nNo test cases were generated.\n")
+            report_text = ""
+
+        if report_text:
+            print(report_text)
+            _save_tc_file(report_text)
+            log_block("FINAL TEST CASE REPORT", report_text)
+        else:
+            print("\nNo test cases were generated. Please try a more specific scenario.\n")
+            logging.info("No test cases were generated.")
 
         log_block("END", "Agent execution completed successfully.")
+        _flush_log_handlers()
 
     except KeyboardInterrupt:
         print("\nBot stopped by user.")
+        logging.info("Bot stopped by user.")
     except Exception as e:
         print(f"\nError: {e}")
+        logging.error(f"Error: {e}", exc_info=True)
+    finally:
+        _flush_log_handlers()
 
 
 if __name__ == "__main__":
